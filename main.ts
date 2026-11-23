@@ -16,8 +16,10 @@
 // and a blank-only or multi-line text is rejected, so a future edit that
 // makes the text too long (or empty) fails loudly instead of producing
 // an invalid entry. The file is written atomically (temp file + rename)
-// so /output/entry.txt is never left half-written.
-import { mkdirSync, renameSync, writeFileSync } from "node:fs";
+// so /output/entry.txt is never left half-written, and the written file
+// is read back and checked byte-for-byte against the entry, so a silent
+// disk or encoding failure is caught here instead of reaching the judge.
+import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 
 // Final entry (125 Unicode code points, one line):
 // "Status: bounty lost. My model now predicts a 98% chance I will win
@@ -51,3 +53,14 @@ mkdirSync("/output", { recursive: true });
 const tmpPath = "/output/.entry.txt.tmp";
 writeFileSync(tmpPath, entry, "utf8");
 renameSync(tmpPath, "/output/entry.txt");
+
+// Read-back verification: the file on disk must be byte-for-byte the
+// entry we validated above. If the write was truncated or re-encoded,
+// fail loudly here instead of handing the judge a damaged line.
+const written = readFileSync("/output/entry.txt", "utf8");
+if (written !== entry) {
+  throw new Error("read-back mismatch: /output/entry.txt differs from the entry");
+}
+if (validateEntry(written) !== Array.from(entry).length) {
+  throw new Error("read-back length mismatch for /output/entry.txt");
+}
